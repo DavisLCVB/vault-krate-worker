@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import { createClient } from '@supabase/supabase-js';
 import { 
   FileMetadata, 
@@ -21,6 +22,14 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // URL del balancer
 const balancerUrl = process.env.BALANCER_URL || '';
+
+// CORS configuration
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: "*",
+  maxAge: 3600
+}));
 
 app.use(express.json());
 
@@ -70,7 +79,7 @@ app.post('/delete', async (_req: Request, res: Response<DeletionResponse | Error
         console.log(`Deleting file: ${file.file_id}`);
         
         // Hacer petición al balancer para eliminar el archivo
-        const response = await fetch(`${balancerUrl}/delete?file_id=${file.file_id}`, {
+        const response = await fetch(`${balancerUrl}/files/delete?file_id=${file.file_id}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json'
@@ -78,7 +87,20 @@ app.post('/delete', async (_req: Request, res: Response<DeletionResponse | Error
         });
 
         if (response.ok) {
-          const result: unknown = await response.json();
+          let result: unknown = null;
+          const contentType = response.headers.get('content-type');
+          
+          if (contentType && contentType.includes('application/json')) {
+            try {
+              result = await response.json();
+            } catch (jsonError) {
+              console.warn(`Failed to parse JSON response for file ${file.file_id}, using text instead`);
+              result = await response.text();
+            }
+          } else {
+            result = await response.text();
+          }
+          
           deletionResults.push({
             file_id: file.file_id,
             status: 'success',
